@@ -7535,6 +7535,15 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             return setError();
         }
 
+        if (exp.to.ty == Tnoreturn)
+        {
+            if (exp.e1.type.ty != Tnoreturn)
+            {
+                exp.error("cannot cast `%s` of type `%s` to noreturn type", exp.e1.toChars(), exp.e1.type.toChars());
+                return setError();
+            }
+        }
+
         // cast(void) is used to mark e1 as unused, so it is safe
         if (exp.to.ty == Tvoid)
         {

@@ -88,3 +88,14 @@ auto returnVoid3(int i)
     else
         return doStuff();
 }
+
+/+
+TEST_OUTPUT:
+---
+fail_compilation/noreturn2.d(100): Error: cannot cast `1` of type `int` to noreturn type
+---
++/
+auto casting()
+{
+    auto inf = cast(noreturn) 1;
+}

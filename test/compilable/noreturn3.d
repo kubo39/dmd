@@ -111,15 +111,12 @@ static assert(!is(typeof(&forwardOrExit2(global))));
 
 void inference()
 {
-    auto inf = cast(noreturn) 1;
-    static assert(is(typeof(inf) == noreturn));
-
     noreturn n;
-    auto c = cast(const shared noreturn) n;
+    const shared c = n;
     static assert(is(typeof(c) == const shared noreturn));
     static assert(is(typeof(n) == noreturn));
 
-    auto c2 = cast(immutable noreturn) n;
+    immutable c2 = n;
     static assert(is(typeof(c) == const shared noreturn));
     static assert(is(typeof(c2) == immutable noreturn));
     static assert(is(typeof(n) == noreturn));
