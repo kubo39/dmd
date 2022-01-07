@@ -2232,31 +2232,27 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
             /* If target type is a tuple of same length, cast each expression to
              * the corresponding type in the tuple.
              */
-            TypeTuple totuple;
-            if (auto tt = t.isTypeTuple())
-                totuple = e.exps.length == tt.arguments.length ? tt : null;
-
-            TupleExp te = e.copy().isTupleExp();
-            te.e0 = e.e0 ? e.e0.copy() : null;
-            te.exps = e.exps.copy();
-            for (size_t i = 0; i < te.exps.dim; i++)
+            if (TypeTuple totuple = t.isTypeTuple())
             {
-                Expression ex = (*te.exps)[i];
-                ex = ex.castTo(sc, totuple ? (*totuple.arguments)[i].type : t);
-                (*te.exps)[i] = ex;
+                if (e.exps.length == totuple.arguments.length)
+                {
+                    TupleExp te = e.copy().isTupleExp();
+                    te.e0 = e.e0 ? e.e0.copy() : null;
+                    te.exps = e.exps.copy();
+                    for (size_t i = 0; i < te.exps.dim; i++)
+                    {
+                        Expression ex = (*te.exps)[i];
+                        ex = ex.castTo(sc, (*totuple.arguments)[i].type);
+                        (*te.exps)[i] = ex;
+                    }
+                    te.type = totuple;
+                    result = te;
+                    return;
+                }
             }
-            result = te;
-
-            /* Questionable behavior: In here, result.type is not set to t.
-             * Therefoe:
-             *  TypeTuple!(int, int) values;
-             *  auto values2 = cast(long)values;
-             *  // typeof(values2) == TypeTuple!(int, int) !!
-             *
-             * Only when the casted tuple is immediately expanded, it would work.
-             *  auto arr = [cast(long)values];
-             *  // typeof(arr) == long[]
-             */
+            e.error("cannot cast `%s` to `%s`", e.toChars(), t.toChars());
+            result = ErrorExp.get();
+            return;
         }
 
         override void visit(ArrayLiteralExp e)
