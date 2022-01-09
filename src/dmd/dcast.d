@@ -2993,7 +2993,11 @@ Lagain:
     t2 = t2b;
 
     if (t1.ty == Ttuple || t2.ty == Ttuple)
-        return null;
+    {
+        if (!(t1.ty == Ttuple && t2.ty == Ttuple &&
+              (op == EXP.identity || op == EXP.notIdentity)))
+            return null;
+    }
 
     if (t1.equals(t2))
     {

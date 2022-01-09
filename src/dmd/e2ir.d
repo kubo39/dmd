@@ -1995,7 +1995,7 @@ extern (C++) class ToElemVisitor : Visitor
             // we can skip the compare if the structs are empty
             e = el_long(TYbool, ie.op == EXP.identity);
         }
-        else if (t1.ty == Tstruct || t1.isfloating())
+        else if (t1.ty == Tstruct || t1.isfloating() || t1.ty == Ttuple)
         {
             // Do bit compare of struct's
             elem *es1 = toElem(ie.e1, irs);

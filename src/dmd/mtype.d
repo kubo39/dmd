@@ -6524,6 +6524,17 @@ extern (C++) final class TypeTuple : Type
         return "tuple";
     }
 
+    override d_uns64 size(const ref Loc loc)
+    {
+        d_uns64 result = 0;
+        foreach (size_t i; 0 .. arguments.dim)
+        {
+            Type type = (*arguments)[i].type;
+            result += type.size();
+        }
+        return result;
+    }
+
     override TypeTuple syntaxCopy()
     {
         Parameters* args = Parameter.arraySyntaxCopy(arguments);
