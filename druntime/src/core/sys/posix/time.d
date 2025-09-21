@@ -149,8 +149,8 @@ else version (DragonFlyBSD)
     enum CLOCK_MONOTONIC         = 4;
 }
 else version (Darwin)
-{
-    // No CLOCK_MONOTONIC defined
+{   // time.h
+    //enum CLOCK_MONOTONIC         = 6;
 }
 else version (Solaris)
 {
@@ -301,6 +301,13 @@ version (CRuntime_Glibc)
 }
 else version (Darwin)
 {
+    enum CLOCK_REALTIME = 0;
+
+    alias int clockid_t;
+
+    // https://www.manpagez.com/man/3/clock_gettime/
+    int clock_getres(clockid_t, timespec*);
+    int clock_gettime(clockid_t, timespec*);
     int nanosleep(const scope timespec*, timespec*);
 }
 else version (FreeBSD)

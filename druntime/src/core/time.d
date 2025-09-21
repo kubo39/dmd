@@ -85,7 +85,7 @@ version (Windows)
 else version (Darwin)
 {
     import core.sys.posix.sys.time : gettimeofday, timeval;
-    import core.sys.posix.time : timespec;
+    import core.sys.posix.time : clock_getres, clock_gettime, timespec;
 }
 else version (Posix)
 {
@@ -95,32 +95,6 @@ else version (Posix)
 
 version (unittest) import core.stdc.stdio : printf;
 
-
-//This probably should be moved somewhere else in druntime which
-//is Darwin-specific.
-version (Darwin)
-{
-
-import core.sys.darwin.mach.kern_return : kern_return_t;
-
-extern(C) nothrow @nogc
-{
-
-struct mach_timebase_info_data_t
-{
-    uint numer;
-    uint denom;
-}
-
-alias mach_timebase_info_data_t* mach_timebase_info_t;
-
-kern_return_t mach_timebase_info(mach_timebase_info_t);
-
-ulong mach_absolute_time();
-
-}
-
-}
 
 /++
     What type of clock to use with $(LREF MonoTime) / $(LREF MonoTimeImpl) or
@@ -264,6 +238,13 @@ version (CoreDdoc) enum ClockType
         Uses $(D CLOCK_UPTIME_PRECISE).
       +/
     uptimePrecise = 10,
+
+    /++
+        $(BLUE Darwin-Only)
+
+        Uses $(D CLOCK_UPTIME_RAW).
+      +/
+    uptimeRaw = 11,
 }
 else version (Windows) enum ClockType
 {
@@ -278,6 +259,7 @@ else version (Darwin) enum ClockType
     coarse = 2,
     precise = 3,
     second = 6,
+    uptimeRaw = 11,
 }
 else version (linux) enum ClockType
 {
@@ -366,6 +348,20 @@ version (Posix)
             case processCPUTime: return CLOCK_PROCESS_CPUTIME_ID;
             case raw: return CLOCK_MONOTONIC_RAW;
             case threadCPUTime: return CLOCK_THREAD_CPUTIME_ID;
+            case second: assert(0);
+            }
+        }
+        version (Darwin)
+        {
+            // MonoTime on Darwin was historically implemented using
+            // mach_absolute_time, so preserve it.
+            import core.sys.darwin.time;
+            with (ClockType) final switch (clockType)
+            {
+            case normal: return CLOCK_UPTIME_RAW;
+            case coarse: return CLOCK_UPTIME_RAW;
+            case precise: return CLOCK_UPTIME_RAW;
+            case uptimeRaw: return CLOCK_UPTIME_RAW;
             case second: assert(0);
             }
         }
@@ -460,6 +456,7 @@ unittest
     static if (is(typeof(ClockType.uptime)))         static assert(ClockType.uptime == 8);
     static if (is(typeof(ClockType.uptimeCoarse)))   static assert(ClockType.uptimeCoarse == 9);
     static if (is(typeof(ClockType.uptimePrecise)))  static assert(ClockType.uptimePrecise == 10);
+    static if (is(typeof(ClockType.uptimeRaw)))      static assert(ClockType.uptimeRaw == 11);
 }
 
 
@@ -2118,16 +2115,6 @@ struct MonoTimeImpl(ClockType clockType)
                              " is not supported by MonoTimeImpl on this system.");
         }
     }
-    else version (Darwin)
-    {
-        static if (clockType != ClockType.coarse &&
-                  clockType != ClockType.normal &&
-                  clockType != ClockType.precise)
-        {
-            static assert(0, "ClockType." ~ _clockName ~
-                             " is not supported by MonoTimeImpl on this system.");
-        }
-    }
     else version (Posix)
     {
         enum clockArg = _posixClock(clockType);
@@ -2151,9 +2138,8 @@ struct MonoTimeImpl(ClockType clockType)
         by NTP), whereas the monotonic clock always moves forward. The source
         of the monotonic time is system-specific.
 
-        On Windows, $(D QueryPerformanceCounter) is used. On Mac OS X,
-        $(D mach_absolute_time) is used, while on other POSIX systems,
-        $(D clock_gettime) is used.
+        On Windows, $(D QueryPerformanceCounter) is used.
+        On POSIX systems, $(D clock_gettime) is used.
 
         $(RED Warning): On some systems, the monotonic clock may stop counting
                         when the computer goes to sleep or hibernates. So, the
@@ -2177,8 +2163,6 @@ struct MonoTimeImpl(ClockType clockType)
             QueryPerformanceCounter(&ticks);
             return MonoTimeImpl(ticks);
         }
-        else version (Darwin)
-            return MonoTimeImpl(mach_absolute_time());
         else version (Posix)
         {
             timespec ts = void;
@@ -2552,18 +2536,6 @@ extern(C) void _d_initMonoTime() @nogc nothrow
             }
         }
     }
-    else version (Darwin)
-    {
-        immutable long ticksPerSecond = machTicksPerSecond();
-        foreach (i, typeStr; __traits(allMembers, ClockType))
-        {
-            // ensure we are only writing immutable data once
-            if (tps[i] != 0)
-                // should only be called once
-                assert(0);
-            tps[i] = ticksPerSecond;
-        }
-    }
     else version (Posix)
     {
         timespec ts;
@@ -2867,17 +2839,20 @@ deprecated:
             if (QueryPerformanceFrequency(cast(long*)&ticksPerSec) == 0)
                 ticksPerSec = 0;
         }
-        else version (Darwin)
-        {
-            ticksPerSec = machTicksPerSecond();
-        }
         else version (Posix)
         {
             static if (is(typeof(clock_gettime)))
             {
                 timespec ts;
 
-                if (clock_getres(CLOCK_MONOTONIC, &ts) != 0)
+                version (Darwin)
+                {
+                    import core.sys.darwin.time;
+                    enum CLOCK_ID = CLOCK_UPTIME_RAW;
+                }
+                else
+                    enum CLOCK_ID = CLOCK_MONOTONIC;
+                if (clock_getres(CLOCK_ID, &ts) != 0)
                     ticksPerSec = 0;
                 else
                 {
@@ -3395,14 +3370,12 @@ deprecated:
         intended for precision timing by comparing relative time values, not for
         getting the current system time.
 
-        On Windows, $(D QueryPerformanceCounter) is used. On Mac OS X,
-        $(D mach_absolute_time) is used, while on other Posix systems,
-        $(D clock_gettime) is used. If $(D mach_absolute_time) or
-        $(D clock_gettime) is unavailable, then Posix systems use
-        $(D gettimeofday) (the decision is made when $(D TickDuration) is
-        compiled), which unfortunately, is not monotonic, but if
-        $(D mach_absolute_time) and $(D clock_gettime) aren't available, then
-        $(D gettimeofday) is the best that there is.
+        On Windows, $(D QueryPerformanceCounter) is used. On Posix systems,
+        $(D clock_gettime) is used. If  $(D clock_gettime) is unavailable,
+        then Posix systems use $(D gettimeofday) (the decision is made when
+        $(D TickDuration) is compiled), which unfortunately, is not monotonic,
+        but if $(D clock_gettime) aren't available, then $(D gettimeofday) is
+        the best that there is.
 
         $(RED Warning):
             On some systems, the monotonic clock may stop counting when
@@ -3423,24 +3396,22 @@ deprecated:
             QueryPerformanceCounter(cast(long*)&ticks);
             return TickDuration(ticks);
         }
-        else version (Darwin)
-        {
-            static if (is(typeof(mach_absolute_time)))
-                return TickDuration(cast(long)mach_absolute_time());
-            else
-            {
-                timeval tv = void;
-                gettimeofday(&tv, null);
-                return TickDuration(tv.tv_sec * TickDuration.ticksPerSec +
-                                    tv.tv_usec * TickDuration.ticksPerSec / 1000 / 1000);
-            }
-        }
         else version (Posix)
         {
             static if (is(typeof(clock_gettime)))
             {
                 timespec ts = void;
-                immutable error = clock_gettime(CLOCK_MONOTONIC, &ts);
+
+                // TickDuration on Darwin was historically implemented using
+                // mach_absolute_time, so preserve it.
+                version (Darwin)
+                {
+                    import core.sys.darwin.time;
+                    enum CLOCK_ID = CLOCK_UPTIME_RAW;
+                }
+                else
+                    enum CLOCK_ID = CLOCK_MONOTONIC;
+                immutable error = clock_gettime(CLOCK_ID, &ts);
                 // CLOCK_MONOTONIC is supported and if tv_sec is long or larger
                 // overflow won't happen before 292 billion years A.D.
                 static if (ts.tv_sec.max < long.max)
@@ -3863,22 +3834,6 @@ unittest
     assert(unitsAreInDescendingOrder(["hnsecs"]));
     assert(!unitsAreInDescendingOrder(["days", "hours", "hours"]));
     assert(!unitsAreInDescendingOrder(["days", "hours", "days"]));
-}
-
-version (Darwin)
-long machTicksPerSecond() @nogc nothrow
-{
-    // Be optimistic that ticksPerSecond (1e9*denom/numer) is integral. So far
-    // so good on Darwin based platforms OS X, iOS.
-    import core.internal.abort : abort;
-    mach_timebase_info_data_t info;
-    if (mach_timebase_info(&info) != 0)
-        abort("Failed in mach_timebase_info().");
-
-    long scaledDenom = 1_000_000_000L * info.denom;
-    if (scaledDenom % info.numer != 0)
-        abort("Non integral ticksPerSecond from mach_timebase_info.");
-    return scaledDenom / info.numer;
 }
 
 /+

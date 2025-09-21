@@ -152,6 +152,7 @@ COPY=\
 	$(IMPDIR)\core\sys\darwin\pthread.d \
 	$(IMPDIR)\core\sys\darwin\stdlib.d \
 	$(IMPDIR)\core\sys\darwin\string.d \
+	$(IMPDIR)\core\sys\darwin\time.d \
 	\
 	$(IMPDIR)\core\sys\darwin\mach\dyld.d \
 	$(IMPDIR)\core\sys\darwin\mach\getsect.d \
