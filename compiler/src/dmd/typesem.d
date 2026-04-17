@@ -6528,10 +6528,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, DotExpFlag
             auto loc = e.loc;
             Expression hookFunc = new IdentifierExp(loc, Id.empty);
             hookFunc = new DotIdExp(loc, hookFunc, Id.object);
-            auto keytype = mt.index.substWildTo(MODFlags.const_);
-            auto valtype = mt.nextOf().substWildTo(MODFlags.const_);
-            auto tiargs = new Objects(keytype, valtype);
-            hookFunc = new DotTemplateInstanceExp(loc, hookFunc, Id._d_aaLen, tiargs);
+            hookFunc = new DotIdExp(loc, hookFunc, Id._d_aaLen);
             Expression e = new CallExp(loc, hookFunc, e);
             e = e.expressionSemantic(sc);
             return e;
